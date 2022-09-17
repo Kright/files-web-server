@@ -1,0 +1,10 @@
+port = 8081
+maxThreadsCount = 64
+
+[[mapping]]
+browserPath = "/somePath"
+fsPath = "/file/system/path"
+
+[[mapping]]
+browserPath = "/some/other/Path"
+fsPath = "/file/system/other/path"
