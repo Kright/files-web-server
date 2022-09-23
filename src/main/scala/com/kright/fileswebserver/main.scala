@@ -30,7 +30,7 @@ def main(): Unit = {
 private class BooksHandler(mapping: DirectoryMapping) extends HttpHandler :
   private val dirPath: Path = {
     val booksDir = new File(mapping.fsPath)
-    require(booksDir.exists(), s"file ${booksDir} doesn't exist!")
+    require(booksDir.exists(), s"file $booksDir doesn't exist!")
     booksDir.toPath.toAbsolutePath
   }
 
@@ -118,12 +118,12 @@ private class BooksHandler(mapping: DirectoryMapping) extends HttpHandler :
   def makeHtmlPage(files: Iterable[File], parentDir: Option[File]): String =
     val links = orderFiles(files).flatMap { file =>
       toRelativeLink(file).map { link =>
-        f"""<p><a href="$link">${file.getName}</a>${prettySize(file).map(s => s" $s").getOrElse("")}</p>"""
+        f"""<li><a href="$link">${file.getName}</a>${prettySize(file).map(s => s" $s").getOrElse("")}</li>""".indent(8)
       }
-    }.mkString("\n")
+    }.mkString("<ul>\n".indent(6), "\n", "\n" + "</ul>".indent(6))
 
     val parentLink = parentDir.flatMap(toRelativeLink).map { link =>
-      f"""<p><a href="$link">..</a></p>"""
+      f"""<p><a href="$link">..</a></p>""".indent(6)
     }.getOrElse("")
 
     s"""
@@ -135,8 +135,8 @@ private class BooksHandler(mapping: DirectoryMapping) extends HttpHandler :
        |  </head>
        |  <body>
        |    <div>
-       |     $parentLink
-       |     $links
+       |$parentLink
+       |$links
        |    </div>
        |  </body>
        |</html>
