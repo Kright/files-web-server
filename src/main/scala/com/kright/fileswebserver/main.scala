@@ -20,14 +20,14 @@ def main(): Unit = {
   val executor = new ThreadPoolExecutor(0, config.maxThreadsCount, 60L, TimeUnit.SECONDS, new SynchronousQueue())
 
   for (mapping <- config.mappings) {
-    server.createContext(mapping.browserPath, new BooksHandler(mapping))
+    server.createContext(mapping.browserPath, new FilesHandler(mapping))
   }
 
   server.setExecutor(executor)
   server.start()
 }
 
-private class BooksHandler(mapping: DirectoryMapping) extends HttpHandler :
+private class FilesHandler(mapping: DirectoryMapping) extends HttpHandler :
   private val dirPath: Path = {
     val booksDir = new File(mapping.fsPath)
     require(booksDir.exists(), s"file $booksDir doesn't exist!")
