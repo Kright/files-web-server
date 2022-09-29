@@ -143,7 +143,7 @@ private class FilesHandler(mapping: DirectoryMapping) extends HttpHandler :
        |<html>
        |  <head>
        |    <meta charset="utf-8">
-       |    <title>This is a title</title>
+       |    <title>${currentDir.getName}</title>
        |  </head>
        |  <body>
        |    <div>
