@@ -62,16 +62,17 @@ private class FilesHandler(mapping: DirectoryMapping) extends HttpHandler :
     if (!file.exists()) return None
     Some(file)
 
-  private def toRelativeLink(file: File): Option[String] =
+  private def toBrowserPath(file: File): Option[String] =
     val absPath = file.toPath.toAbsolutePath
     if (!absPath.startsWith(dirPath)) return None
     val relativePath = dirPath.relativize(absPath)
-    val str = s"/${browserPath.resolve(relativePath).toString}"
+    Option(s"/${browserPath.resolve(relativePath).toString}")
+
+  private def encodePathAsLink(path: String): String =
     // it's better to use UrlEscapers.urlFragmentEscaper().escape(inputString);
-    val encoded = str.split("/").map(
+    path.split("/").map(
       URLEncoder.encode(_, StandardCharsets.UTF_8).replace("+", "%20")
     ).mkString("/")
-    Option(encoded)
 
   override def handle(httpExchange: HttpExchange): Unit =
     Using(httpExchange) { _ =>
@@ -91,7 +92,7 @@ private class FilesHandler(mapping: DirectoryMapping) extends HttpHandler :
     toValidFile(path) match
       case Some(file) if file.isFile => sendFile(httpExchange, file)
       case Some(file) if file.isDirectory =>
-        val htmlPage = makeHtmlPage(file.listFiles(), Option(file.getParentFile))
+        val htmlPage = makeHtmlPage(file.listFiles(), file)
         reply(httpExchange, 200, htmlPage)
       case _ =>
         reply(httpExchange, 404, "Not found!")
@@ -115,16 +116,27 @@ private class FilesHandler(mapping: DirectoryMapping) extends HttpHandler :
   def orderFiles(allFiles: Iterable[File]): Iterable[File] =
     allFiles.map(f => (f.isFile, f.getName, f)).toArray.sortBy(triple => (triple._1, triple._2)).map(_._3)
 
-  def makeHtmlPage(files: Iterable[File], parentDir: Option[File]): String =
+  def makeParentLink(currentDir: File): String =
+    toBrowserPath(currentDir) match
+      case None => ""
+      case Some(browserPath) =>
+        val parts = browserPath.split("/")
+        val encodedParts = parts.map(encodePathAsLink)
+        val links = (2 to parts.size).map{ i =>
+          val link = encodedParts.take(i).mkString("/")
+          val name = parts(i - 1)
+          s"""<a href="$link">$name</a>"""
+        }.mkString("/")
+        f"""<p>$links</p>""".indent(6)
+
+  def makeHtmlPage(files: Iterable[File], currentDir: File): String =
     val links = orderFiles(files).flatMap { file =>
-      toRelativeLink(file).map { link =>
+      toBrowserPath(file).map(encodePathAsLink).map { link =>
         f"""<li><a href="$link">${file.getName}</a>${prettySize(file).map(s => s" $s").getOrElse("")}</li>""".indent(8)
       }
     }.mkString("<ul>\n".indent(6), "\n", "\n" + "</ul>".indent(6))
 
-    val parentLink = parentDir.flatMap(toRelativeLink).map { link =>
-      f"""<p><a href="$link">..</a></p>""".indent(6)
-    }.getOrElse("")
+    val parentLink = makeParentLink(currentDir)
 
     s"""
        |<!DOCTYPE html>
