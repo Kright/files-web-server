@@ -19,27 +19,33 @@ def main(): Unit = {
   // server won't respond if connections count is bigger than config.maxThreadsCount
   val executor = new ThreadPoolExecutor(0, config.maxThreadsCount, 60L, TimeUnit.SECONDS, new SynchronousQueue())
 
+  val providerFactory: String => Either[String, FSPathProvider] =
+    if (config.failIfMappedDirectoryNotExists) FSPathProvider.checked
+    else path => Right(FSPathProvider.unchecked(path))
+
   for (mapping <- config.mappings) {
-    server.createContext(mapping.browserPath, new FilesHandler(mapping))
+    val handlerOrError: Either[String, FilesHandler] = for {
+      fsPathProvider <- providerFactory(mapping.fsPath)
+      browserPath <- getValidBrowserPathOrError(mapping)
+    } yield new FilesHandler(browserPath, fsPathProvider)
+
+    handlerOrError match
+      case Right(filesHandler) => server.createContext(mapping.fsPath, filesHandler)
+      case Left(errorMsg) => throw IllegalArgumentException(errorMsg)
   }
 
   server.setExecutor(executor)
   server.start()
 }
 
-private class FilesHandler(mapping: DirectoryMapping) extends HttpHandler :
-  private val dirPath: Path = {
-    val booksDir = new File(mapping.fsPath)
-    require(booksDir.exists(), s"file $booksDir doesn't exist!")
-    booksDir.toPath.toAbsolutePath
-  }
+private def getValidBrowserPathOrError(mapping: DirectoryMapping): Either[String, Path] =
+  if (!mapping.browserPath.startsWith("/")) return Left("browserPath should start from '/'")
+  val p = Path.of(mapping.browserPath.substring(1))
+  if (p.isAbsolute) return Left("invalid browser path")
+  Right(p)
 
-  private val browserPath: Path = {
-    require(mapping.browserPath.startsWith("/"), "browserPath should start from '/'")
-    val p = Path.of(mapping.browserPath.substring(1))
-    require(!p.isAbsolute, "invalid browser path")
-    p
-  }
+private class FilesHandler(val browserPath: Path,
+                           private val fsPathProvider: FSPathProvider) extends HttpHandler :
 
   private def reply(httpExchange: HttpExchange, code: Int, text: String): Unit =
     val response = text.getBytes
@@ -55,18 +61,22 @@ private class FilesHandler(mapping: DirectoryMapping) extends HttpHandler :
 
     val relativePath = browserPath.relativize(path)
 
-    val absolutePath = dirPath.resolve(relativePath).toAbsolutePath
-    if (!absolutePath.startsWith(dirPath)) return None
-
-    val file = absolutePath.toFile
-    if (!file.exists()) return None
-    Some(file)
+    for {
+      dirPath <- fsPathProvider.getAbsolutePath
+      absolutePath = dirPath.resolve(relativePath).toAbsolutePath
+      if absolutePath.startsWith(dirPath)
+      file = absolutePath.toFile
+      if file.exists()
+    } yield file
 
   private def toBrowserPath(file: File): Option[String] =
     val absPath = file.toPath.toAbsolutePath
-    if (!absPath.startsWith(dirPath)) return None
-    val relativePath = dirPath.relativize(absPath)
-    Option(s"/${browserPath.resolve(relativePath).toString}")
+
+    for {
+      dirPath <- fsPathProvider.getAbsolutePath
+      if absPath.startsWith(dirPath)
+      relativePath = dirPath.relativize(absPath)
+    } yield s"/${browserPath.resolve(relativePath).toString}"
 
   private def encodePathAsLink(path: String): String =
     // it's better to use UrlEscapers.urlFragmentEscaper().escape(inputString);

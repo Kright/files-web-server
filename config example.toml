@@ -1,5 +1,6 @@
 port = 8081
 maxThreadsCount = 64
+failIfMappedDirectoryNotExists = true
 
 [[mapping]]
 browserPath = "/somePath"

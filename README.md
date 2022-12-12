@@ -22,6 +22,7 @@ I'm using Scala 3.2, builtin java HttpServer and [night-config](https://github.c
 * ```maxThreadsCount``` - maximum amount of simultaneous connections. Server spawn threads lazily, unused threads will be freed after 60 seconds of waiting.
 * section for each entry point:
   * ```browserPath = "/some/other/Path"``` path in browser, for example ```127.0.0.1:8081/some/other/Path```
+  * ```failIfMappedDirectoryNotExists``` fail fast if mapped directory doesn't exist in file system. If disabled, server will respond "not found" for mappings without file system directory. 
   * ```fsPath = "/file/system/other/path"``` corresponding directory in file system
 
 
