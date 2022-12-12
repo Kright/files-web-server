@@ -20,8 +20,6 @@ object ServerConfig:
     )
 
   def apply(): ServerConfig =
-    FileConfig.builder("conf").build()
-
     Using(FileConfig.of("config.toml")) { conf =>
       conf.load()
       ServerConfig(conf)
