@@ -13,7 +13,7 @@ I'm using Scala 3, builtin java HttpServer and [night-config](https://github.com
 
 ## How to build and use
 
-1. Make a jar file: ```sbt assembly```. It will appear inside directory ```target/scala-3.2.0```.
+1. Make a jar file: ```sbt assembly```. It will appear inside directory ```target/scala-3.4.2```.
 2. Create ```config.toml``` file and specify port and paths. See ```config example.conf```.
 3. run ```java -jar fileswebserver-assembly-0.1.0-SNAPSHOT.jar```.
 4. Access it in browser via ```127.0.0.1:8081/some/path```.
@@ -25,6 +25,5 @@ I'm using Scala 3, builtin java HttpServer and [night-config](https://github.com
 * section for each entry point:
   * ```browserPath = "/some/other/Path"``` path in browser, for example ```127.0.0.1:8081/some/other/Path```
   * ```failIfMappedDirectoryNotExists``` fail fast if mapped directory doesn't exist in file system. If disabled, server will respond "not found" for mappings without file system directory. 
-  * ```fsPath = "/file/system/other/path"``` corresponding directory in file system
-
-
+  * ```fsPath = "/file/system/other/path"``` corresponding directory in the file system
+  * ```allowFileUploading = true``` - false by default. Allow uploading files to server, implementation is experimental and unsafe. 
