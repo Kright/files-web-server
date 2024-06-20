@@ -3,11 +3,13 @@
 This is a very simple HTTP server for sharing files and directories via web interface.
 
 I host this on my Raspberry Pi for accessing files in home network. 
-Just because I don't want to setup samba access for each device and sometimes need a way to share file. I can simply send a link to any device and download.
+Just because I don't want to set up samba access for each device and sometimes need a way to share file. I can simply send a link to any device and download.
 
 I'm not sure that this server is secure or can withstand attacks. Use it in private networks only.
 
-I'm using Scala 3.2, builtin java HttpServer and [night-config](https://github.com/TheElectronWill/night-config) for config file.
+Setting "allowFileUploading=true" is definitely unsafe and enables experimental code for file saving.
+
+I'm using Scala 3, builtin java HttpServer and [night-config](https://github.com/TheElectronWill/night-config) for config file.
 
 ## How to build and use
 

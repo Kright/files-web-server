@@ -2,13 +2,12 @@ package com.kright.fileswebserver
 
 import com.sun.net.httpserver.{HttpExchange, HttpHandler, HttpServer}
 
-import java.io.{BufferedReader, File, FileInputStream, InputStreamReader}
-import scala.util.Using
-import scala.util.Try
-import java.net.{InetSocketAddress, ServerSocket, Socket, URI, URL, URLDecoder, URLEncoder}
+import java.io.{File, FileInputStream}
+import java.net.{InetSocketAddress, URLEncoder}
 import java.nio.charset.StandardCharsets
-import java.util.concurrent.{Executors, SynchronousQueue, ThreadPoolExecutor, TimeUnit}
-import java.nio.file.{Files, Path, Paths}
+import java.nio.file.{Files, Path}
+import java.util.concurrent.{SynchronousQueue, ThreadPoolExecutor, TimeUnit}
+import scala.util.Using
 
 @main
 def main(): Unit = {
@@ -27,10 +26,10 @@ def main(): Unit = {
     val handlerOrError: Either[String, FilesHandler] = for {
       fsPathProvider <- providerFactory(mapping.fsPath)
       browserPath <- getValidBrowserPathOrError(mapping)
-    } yield new FilesHandler(browserPath, fsPathProvider)
+    } yield new FilesHandler(browserPath, fsPathProvider, mapping.allowFileUploading)
 
     handlerOrError match
-      case Right(filesHandler) => server.createContext(mapping.fsPath, filesHandler)
+      case Right(filesHandler) => server.createContext(mapping.browserPath, filesHandler)
       case Left(errorMsg) => throw IllegalArgumentException(errorMsg)
   }
 
@@ -45,7 +44,8 @@ private def getValidBrowserPathOrError(mapping: DirectoryMapping): Either[String
   Right(p)
 
 private class FilesHandler(val browserPath: Path,
-                           private val fsPathProvider: FSPathProvider) extends HttpHandler :
+                           private val fsPathProvider: FSPathProvider,
+                           private val allowFileUploading: Boolean) extends HttpHandler:
 
   private def reply(httpExchange: HttpExchange, code: Int, text: String): Unit =
     val response = text.getBytes
@@ -94,18 +94,26 @@ private class FilesHandler(val browserPath: Path,
     val method = httpExchange.getRequestMethod
     val path = uri.getPath
 
-    if (method != "GET") {
-      reply(httpExchange, 400, "only GET method supported!")
-      return
-    }
-
-    toValidFile(path) match
-      case Some(file) if file.isFile => sendFile(httpExchange, file)
-      case Some(file) if file.isDirectory =>
-        val htmlPage = makeHtmlPage(file.listFiles(), file)
-        reply(httpExchange, 200, htmlPage)
+    method match
+      case "GET" =>
+        toValidFile(path) match
+          case Some(file) if file.isFile =>
+            sendFile(httpExchange, file)
+          case Some(file) if file.isDirectory =>
+            val htmlPage = makeHtmlPage(file.listFiles(), file)
+            reply(httpExchange, 200, htmlPage)
+          case _ =>
+            reply(httpExchange, 404, "Not found!")
+      case "POST" if allowFileUploading =>
+        toValidFile(path) match
+          case Some(file) if file.isDirectory =>
+            FileSaver.receiveFiles(file, httpExchange)
+            val htmlPage = makeHtmlPage(file.listFiles(), file)
+            reply(httpExchange, 200, htmlPage)
+          case _ =>
+            reply(httpExchange, 404, "Not found!")
       case _ =>
-        reply(httpExchange, 404, "Not found!")
+        reply(httpExchange, 400, "only GET method supported!")
 
   private def sendFile(httpExchange: HttpExchange, file: File): Unit =
     httpExchange.sendResponseHeaders(200, Files.size(file.toPath))
@@ -132,7 +140,7 @@ private class FilesHandler(val browserPath: Path,
       case Some(browserPath) =>
         val parts = browserPath.split("/")
         val encodedParts = parts.map(encodePathAsLink)
-        val links = (2 to parts.size).map{ i =>
+        val links = (2 to parts.size).map { i =>
           val link = encodedParts.take(i).mkString("/")
           val name = parts(i - 1)
           s"""<a href="$link">$name</a>"""
@@ -148,6 +156,14 @@ private class FilesHandler(val browserPath: Path,
 
     val parentLink = makeParentLink(currentDir)
 
+    val uploadFile = if (allowFileUploading) {
+      """    <form enctype="multipart/form-data" method="post">
+        |      <p><input type="file" name="upload" multiple>
+        |      <input type="submit" value="Upload"></p>
+        |    </form>
+        |""".stripMargin
+    } else ""
+
     s"""
        |<!DOCTYPE html>
        |<html>
@@ -159,6 +175,7 @@ private class FilesHandler(val browserPath: Path,
        |    <div>
        |$parentLink
        |$links
+       |$uploadFile
        |    </div>
        |  </body>
        |</html>

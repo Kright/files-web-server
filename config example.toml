@@ -5,6 +5,7 @@ failIfMappedDirectoryNotExists = true
 [[mapping]]
 browserPath = "/somePath"
 fsPath = "/file/system/path"
+allowFileUploading = true
 
 [[mapping]]
 browserPath = "/some/other/Path"

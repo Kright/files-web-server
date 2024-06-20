@@ -2,9 +2,9 @@ package com.kright.fileswebserver
 
 import com.electronwill.nightconfig.core.Config
 import com.electronwill.nightconfig.core.file.FileConfig
-import scala.jdk.CollectionConverters._
 
 import java.util
+import scala.jdk.CollectionConverters.*
 import scala.util.Using
 
 case class ServerConfig(port: Int,
@@ -29,11 +29,13 @@ object ServerConfig:
 
 
 case class DirectoryMapping(fsPath: String,
-                            browserPath: String)
+                            browserPath: String,
+                            allowFileUploading: Boolean)
 
 object DirectoryMapping:
   def apply(conf: Config): DirectoryMapping =
     DirectoryMapping(
       fsPath = conf.get[String]("fsPath"),
-      browserPath = conf.get[String]("browserPath")
+      browserPath = conf.get[String]("browserPath"),
+      allowFileUploading = conf.getOrElse[Boolean]("allowFileUploading", false),
     )
