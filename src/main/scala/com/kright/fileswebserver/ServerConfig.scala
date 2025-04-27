@@ -10,6 +10,7 @@ import scala.util.Using
 case class ServerConfig(port: Int,
                         maxThreadsCount: Int,
                         failIfMappedDirectoryNotExists: Boolean,
+                        generateIndexPage: Boolean,
                         mappings: Seq[DirectoryMapping])
 
 object ServerConfig:
@@ -17,6 +18,7 @@ object ServerConfig:
     ServerConfig(
       port = conf.getInt("port"),
       maxThreadsCount = conf.getInt("maxThreadsCount"),
+      generateIndexPage = conf.getOrElse[Boolean]("generateIndexPage", false),
       failIfMappedDirectoryNotExists = conf.get[Boolean]("failIfMappedDirectoryNotExists"),
       mappings = conf.get[java.util.ArrayList[Config]]("mapping").asScala.map(DirectoryMapping.apply).toSeq
     )

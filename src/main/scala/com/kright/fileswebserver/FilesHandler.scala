@@ -1,5 +1,6 @@
 package com.kright.fileswebserver
 
+import com.kright.fileswebserver.MyHttp.reply
 import com.sun.net.httpserver.{HttpExchange, HttpHandler}
 
 import java.io.{File, FileInputStream}
@@ -12,12 +13,8 @@ class FilesHandler(val browserPath: Path,
                    private val fsPathProvider: FSPathProvider,
                    private val allowFileUploading: Boolean) extends HttpHandler:
 
-  private def reply(httpExchange: HttpExchange, code: Int, text: String): Unit =
-    val response = text.getBytes
-    httpExchange.sendResponseHeaders(code, response.length)
-    Using(httpExchange.getResponseBody) { outputStream =>
-      outputStream.write(response)
-    }
+  val browserRootPath: String = 
+    "/" + browserPath.toString
 
   private def toValidFile(pathString: String): Option[File] =
     if (!pathString.startsWith("/")) return None

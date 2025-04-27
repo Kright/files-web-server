@@ -20,7 +20,12 @@ def main(): Unit = {
   }
 
   fileHandlers.foreach { handler =>
-    server.createContext("/" + handler.browserPath.toString, handler)
+    server.createContext(handler.browserRootPath, handler)
+  }
+
+  if (config.generateIndexPage) {
+    val page = IndexPage(fileHandlers)
+    server.createContext("/", page)
   }
 
   server.setExecutor(executor)
