@@ -3,17 +3,18 @@ package com.kright.fileswebserver
 import com.kright.fileswebserver.MyHttp.reply
 import com.sun.net.httpserver.{HttpExchange, HttpHandler}
 
-import java.io.{File, FileInputStream}
+import java.io.File
 import java.net.URLEncoder
+import java.nio.channels.{Channels, FileChannel}
 import java.nio.charset.StandardCharsets
-import java.nio.file.{Files, Path}
+import java.nio.file.{Files, Path, StandardOpenOption}
 import scala.util.Using
 
 class FilesHandler(val browserPath: Path,
                    private val fsPathProvider: FSPathProvider,
                    private val allowFileUploading: Boolean) extends HttpHandler:
 
-  val browserRootPath: String = 
+  val browserRootPath: String =
     "/" + browserPath.toString
 
   private def toValidFile(pathString: String): Option[File] =
@@ -60,7 +61,7 @@ class FilesHandler(val browserPath: Path,
       case "GET" =>
         toValidFile(path) match
           case Some(file) if file.isFile =>
-            sendFile(httpExchange, file)
+            sendFile(httpExchange, file.toPath)
           case Some(file) if file.isDirectory =>
             val htmlPage = makeHtmlPage(file.listFiles(), file)
             reply(httpExchange, 200, htmlPage)
@@ -77,12 +78,74 @@ class FilesHandler(val browserPath: Path,
       case _ =>
         reply(httpExchange, 400, "only GET method supported!")
 
-  private def sendFile(httpExchange: HttpExchange, file: File): Unit =
-    httpExchange.sendResponseHeaders(200, Files.size(file.toPath))
+  private def sendFile(httpExchange: HttpExchange, file: Path): Unit =
+    val fileSize = Files.size(file)
+    httpExchange.getResponseHeaders.add("Accept-Ranges", "bytes")
+
+    val rangeHeader = Option(httpExchange.getRequestHeaders.getFirst("Range"))
+
+    rangeHeader match
+      case Some(range) if range.startsWith("bytes=") =>
+        sendRange(httpExchange, file, fileSize, range.substring(6))
+      case _ =>
+        sendWholeFile(httpExchange, file, fileSize)
+
+  private def sendWholeFile(httpExchange: HttpExchange, file: Path, fileSize: Long): Unit =
+    httpExchange.sendResponseHeaders(200, fileSize)
+    sendFileBytes(file, httpExchange, 0, fileSize)
+
+  private def parseRange(rangeSpec: String, fileSize: Long): Option[(Long, Long)] =
+    val parts = rangeSpec.split("-")
+    if (parts.isEmpty) {
+      return None
+    }
+    val startOption = parts(0).toLongOption
+    if (startOption.isEmpty) {
+      return None
+    }
+    val start = startOption.get
+    val endInclusive = if (parts.length > 1 && parts(1).nonEmpty) {
+      val number = parts(1).toLongOption
+      if (number.isEmpty) return None
+      number.get
+    } else (fileSize - 1)
+    Some((start, endInclusive))
+
+
+  private def sendRange(httpExchange: HttpExchange, file: Path, fileSize: Long, rangeSpec: String): Unit =
+    val parts = rangeSpec.split("-")
+    if (parts.isEmpty) {
+      reply(httpExchange, 400, "Invalid Range Header")
+      return
+    }
+    parseRange(rangeSpec, fileSize) match {
+      case None => {
+        reply(httpExchange, 400, "Invalid Range Header")
+      }
+      case Some(start, endInclusive) => {
+        if (start < 0 || endInclusive >= fileSize || start > endInclusive) {
+          httpExchange.getResponseHeaders.add("Content-Range", s"bytes */$fileSize")
+          reply(httpExchange, 416, "Range Not Satisfiable")
+          return
+        }
+
+        val contentLength = endInclusive - start + 1
+        httpExchange.getResponseHeaders.add("Content-Range", s"bytes $start-$endInclusive/$fileSize")
+        httpExchange.sendResponseHeaders(206, contentLength)
+        sendFileBytes(file, httpExchange, start, contentLength)
+      }
+    }
+
+  private def sendFileBytes(file: Path, httpExchange: HttpExchange, start: Long, contentLength: Long): Unit =
     Using.Manager { use =>
-      val outputStream = use(httpExchange.getResponseBody)
-      val inputStream = use(new FileInputStream(file))
-      inputStream.transferTo(outputStream)
+      val outputChannel = use(Channels.newChannel(use(httpExchange.getResponseBody)))
+      val fileChannel = use(FileChannel.open(file, StandardOpenOption.READ))
+
+      var position = start
+      val targetEnd = start + contentLength
+      while (position < targetEnd) {
+        position += fileChannel.transferTo(position, targetEnd - position, outputChannel)
+      }
     }
 
   def prettySize(file: File): Option[String] =
