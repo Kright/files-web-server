@@ -13,7 +13,7 @@ I'm using Scala 3, builtin java HttpServer and [night-config](https://github.com
 
 ## How to build and use
 
-1. Make a jar file: ```sbt assembly```. It will appear inside directory ```target/scala-3.4.2```.
+1. Make a jar file: ```sbt assembly```. It will appear inside directory ```target/scala-3.8.3```.
 2. Create ```config.toml``` file and specify port and paths. See ```config example.conf```.
 3. run ```java -jar fileswebserver-assembly-0.1.0-SNAPSHOT.jar```.
 4. Access it in browser via ```127.0.0.1:8081/some/path```.
