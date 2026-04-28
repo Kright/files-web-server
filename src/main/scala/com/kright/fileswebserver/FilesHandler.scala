@@ -8,7 +8,7 @@ import java.net.URLEncoder
 import java.nio.channels.{Channels, FileChannel}
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path, StandardOpenOption}
-import scala.util.Using
+import scala.util.{Try, Using}
 
 class FilesHandler(val browserPath: Path,
                    private val fsPathProvider: FSPathProvider,
@@ -80,7 +80,16 @@ class FilesHandler(val browserPath: Path,
 
   private def sendFile(httpExchange: HttpExchange, file: Path): Unit =
     val fileSize = Files.size(file)
-    httpExchange.getResponseHeaders.add("Accept-Ranges", "bytes")
+    val responseHeaders = httpExchange.getResponseHeaders
+    responseHeaders.add("Accept-Ranges", "bytes")
+
+    Try {
+      Files.probeContentType(file)
+    }.foreach { contentType =>
+      if (contentType != null) {
+        responseHeaders.set("Content-Type", contentType)
+      }
+    }
 
     val rangeHeader = Option(httpExchange.getRequestHeaders.getFirst("Range"))
 
