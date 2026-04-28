@@ -101,8 +101,8 @@ class FilesHandler(val browserPath: Path,
     val rangeHeader = Option(httpExchange.getRequestHeaders.getFirst("Range"))
 
     rangeHeader match
-      case Some(range) if range.startsWith("bytes=") =>
-        sendRange(httpExchange, file, fileSize, range.substring(6), isHead)
+      case Some(range) if range.toLowerCase.startsWith("bytes=") =>
+        sendRange(httpExchange, file, fileSize, range.substring(6).trim, isHead)
       case _ =>
         sendWholeFile(httpExchange, file, fileSize, isHead)
 
@@ -112,19 +112,14 @@ class FilesHandler(val browserPath: Path,
 
   private def sendRange(httpExchange: HttpExchange, file: Path, fileSize: Long, rangeSpec: String, isHead: Boolean): Unit =
     FileRange.tryParse(rangeSpec, fileSize) match {
-      case None => {
-        reply(httpExchange, 400, "Invalid Range Header")
-      }
-      case Some(range) => {
-        if (!range.isValid(fileSize)) {
-          httpExchange.getResponseHeaders.add("Content-Range", s"bytes */$fileSize")
-          reply(httpExchange, 416, "Range Not Satisfiable")
-          return
-        }
-
+      case Some(range) if range.isValid(fileSize) => {
         httpExchange.getResponseHeaders.add("Content-Range", s"bytes ${range.start}-${range.endInclusive}/$fileSize")
         httpExchange.sendResponseHeaders(206, range.contentLength)
         sendFileBytes(file, httpExchange, range.start, range.contentLength, isHead)
+      }
+      case _ => {
+        httpExchange.getResponseHeaders.add("Content-Range", s"bytes */$fileSize")
+        reply(httpExchange, 416, "Range Not Satisfiable")
       }
     }
 

@@ -10,18 +10,34 @@ case class FileRange(start: Long, endInclusive: Long) {
 
 object FileRange:
   def tryParse(rangeSpec: String, fileSize: Long): Option[FileRange] =
-    val parts = rangeSpec.split("-")
-    if (parts.isEmpty) {
+    require(fileSize > 0)
+
+    if (rangeSpec.contains(',')) return None
+
+    val parts = rangeSpec.split("-", -1)
+    if (parts.size != 2) {
       return None
     }
-    val startOption = parts(0).toLongOption
-    if (startOption.isEmpty) {
-      return None
+
+    val startStr = parts(0)
+    val endStr = parts(1)
+
+    if (startStr.isEmpty) {
+      if (endStr.isEmpty) {
+        None
+      } else {
+        // -500 means last 500 bytes of file
+        endStr.toLongOption
+          .filter(_ != 0L)
+          .map(last => FileRange(math.max(fileSize - last, 0L), fileSize - 1))
+      }
+    } else {
+      if (endStr.isEmpty) {
+        // 500- means from byte 500 to file end
+        startStr.toLongOption.map(FileRange(_, fileSize - 1))
+      } else {
+        // 100-199 means bytes from 100 to 199 inclusive
+        for (start <- startStr.toLongOption;
+             end <- endStr.toLongOption) yield FileRange(start, end)
+      }
     }
-    val start = startOption.get
-    val endInclusive = if (parts.length > 1 && parts(1).nonEmpty) {
-      val number = parts(1).toLongOption
-      if (number.isEmpty) return None
-      number.get
-    } else (fileSize - 1)
-    Some(FileRange(start, endInclusive))
