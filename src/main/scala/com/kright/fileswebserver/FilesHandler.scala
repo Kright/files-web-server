@@ -58,13 +58,20 @@ class FilesHandler(val browserPath: Path,
     val path = uri.getPath
 
     method match
-      case "GET" =>
+      case "GET" | "HEAD" =>
         toValidFile(path) match
           case Some(file) if file.isFile =>
-            sendFile(httpExchange, file.toPath)
+            sendFile(httpExchange, file.toPath, method == "HEAD")
           case Some(file) if file.isDirectory =>
             val htmlPage = makeHtmlPage(file.listFiles(), file)
-            reply(httpExchange, 200, htmlPage)
+            if (method == "HEAD") {
+              val response = htmlPage.getBytes(StandardCharsets.UTF_8)
+              httpExchange.getResponseHeaders.set("Content-Type", "text/html; charset=utf-8")
+              httpExchange.sendResponseHeaders(200, response.length)
+              httpExchange.getResponseBody.close()
+            } else {
+              reply(httpExchange, 200, htmlPage)
+            }
           case _ =>
             reply(httpExchange, 404, "Not found!")
       case "POST" if allowFileUploading =>
@@ -78,7 +85,7 @@ class FilesHandler(val browserPath: Path,
       case _ =>
         reply(httpExchange, 400, "only GET method supported!")
 
-  private def sendFile(httpExchange: HttpExchange, file: Path): Unit =
+  private def sendFile(httpExchange: HttpExchange, file: Path, isHead: Boolean): Unit =
     val fileSize = Files.size(file)
     val responseHeaders = httpExchange.getResponseHeaders
     responseHeaders.add("Accept-Ranges", "bytes")
@@ -95,57 +102,37 @@ class FilesHandler(val browserPath: Path,
 
     rangeHeader match
       case Some(range) if range.startsWith("bytes=") =>
-        sendRange(httpExchange, file, fileSize, range.substring(6))
+        sendRange(httpExchange, file, fileSize, range.substring(6), isHead)
       case _ =>
-        sendWholeFile(httpExchange, file, fileSize)
+        sendWholeFile(httpExchange, file, fileSize, isHead)
 
-  private def sendWholeFile(httpExchange: HttpExchange, file: Path, fileSize: Long): Unit =
+  private def sendWholeFile(httpExchange: HttpExchange, file: Path, fileSize: Long, isHead: Boolean): Unit =
     httpExchange.sendResponseHeaders(200, fileSize)
-    sendFileBytes(file, httpExchange, 0, fileSize)
+    sendFileBytes(file, httpExchange, 0, fileSize, isHead)
 
-  private def parseRange(rangeSpec: String, fileSize: Long): Option[(Long, Long)] =
-    val parts = rangeSpec.split("-")
-    if (parts.isEmpty) {
-      return None
-    }
-    val startOption = parts(0).toLongOption
-    if (startOption.isEmpty) {
-      return None
-    }
-    val start = startOption.get
-    val endInclusive = if (parts.length > 1 && parts(1).nonEmpty) {
-      val number = parts(1).toLongOption
-      if (number.isEmpty) return None
-      number.get
-    } else (fileSize - 1)
-    Some((start, endInclusive))
-
-
-  private def sendRange(httpExchange: HttpExchange, file: Path, fileSize: Long, rangeSpec: String): Unit =
-    val parts = rangeSpec.split("-")
-    if (parts.isEmpty) {
-      reply(httpExchange, 400, "Invalid Range Header")
-      return
-    }
-    parseRange(rangeSpec, fileSize) match {
+  private def sendRange(httpExchange: HttpExchange, file: Path, fileSize: Long, rangeSpec: String, isHead: Boolean): Unit =
+    FileRange.tryParse(rangeSpec, fileSize) match {
       case None => {
         reply(httpExchange, 400, "Invalid Range Header")
       }
-      case Some(start, endInclusive) => {
-        if (start < 0 || endInclusive >= fileSize || start > endInclusive) {
+      case Some(range) => {
+        if (!range.isValid(fileSize)) {
           httpExchange.getResponseHeaders.add("Content-Range", s"bytes */$fileSize")
           reply(httpExchange, 416, "Range Not Satisfiable")
           return
         }
 
-        val contentLength = endInclusive - start + 1
-        httpExchange.getResponseHeaders.add("Content-Range", s"bytes $start-$endInclusive/$fileSize")
-        httpExchange.sendResponseHeaders(206, contentLength)
-        sendFileBytes(file, httpExchange, start, contentLength)
+        httpExchange.getResponseHeaders.add("Content-Range", s"bytes ${range.start}-${range.endInclusive}/$fileSize")
+        httpExchange.sendResponseHeaders(206, range.contentLength)
+        sendFileBytes(file, httpExchange, range.start, range.contentLength, isHead)
       }
     }
 
-  private def sendFileBytes(file: Path, httpExchange: HttpExchange, start: Long, contentLength: Long): Unit =
+  private def sendFileBytes(file: Path, httpExchange: HttpExchange, start: Long, contentLength: Long, isHead: Boolean): Unit =
+    if (isHead) {
+      httpExchange.getResponseBody.close()
+      return
+    }
     Using.Manager { use =>
       val outputChannel = use(Channels.newChannel(use(httpExchange.getResponseBody)))
       val fileChannel = use(FileChannel.open(file, StandardOpenOption.READ))
